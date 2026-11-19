@@ -1,19 +1,30 @@
 - name: deploy to kube cluster
   hosts: "{{ env }}"
+  vars:
+    cd_repo_dir: "{{ ansible_env.HOME }}/it-services-portal-cd"
   tasks: 
     - name: clone the cd repo
       git:
        repo: "https://github.com/lerndevops/it-services-portal-cd.git"
-       dest: "/home/devops/it-services-portal-cd"
+       dest: "{{ cd_repo_dir }}"
        version: "plain-yaml"
        clone: yes
        update: yes
+    - name: set deployment image to the CI build
+      replace:
+        path: "{{ cd_repo_dir }}/k8s-deploy/releases/{{ env }}/deployment.yaml"
+        regexp: '(?m)^(\s*image:\s*).+$'
+        replace: '\g<1>{{ image }}'
+      when: image is defined
     - name: deploy application 
-      shell: "cd /home/devops/it-services-portal-cd/k8s-deploy/releases/dev ; kubectl apply -f ."
+      shell: "cd {{ cd_repo_dir }}/k8s-deploy/releases/dev ; kubectl apply -f ."
       when: env == "dev"
     - name: deploy application 
-      shell: "cd /home/devops/it-services-portal-cd/k8s-deploy/releases/uat ; kubectl apply -f ."
+      shell: "cd {{ cd_repo_dir }}/k8s-deploy/releases/uat ; kubectl apply -f ."
       when: env == "uat"
     - name: deploy application 
-      shell: "cd /home/devops/it-services-portal-cd/k8s-deploy/releases/prod ; kubectl apply -f ."
+      shell: "cd {{ cd_repo_dir }}/k8s-deploy/releases/prod ; kubectl apply -f ."
       when: env == "prod"
+    - name: wait for deployment rollout
+      command: kubectl rollout status deployment/it-services-portal --timeout=300s
+      when: image is defined

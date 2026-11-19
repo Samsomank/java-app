@@ -70,6 +70,15 @@ jar tf target/it-services-portal.war | head
 
 ## Deployment Steps
 
+### GitHub Actions Kubernetes Deployment (dev)
+- [ ] Create the `dev` GitHub Actions environment.
+- [ ] Add `K8S_MASTER_HOST` (Azure VM public IP), `K8S_SSH_USER`, `K8S_SSH_PASSWORD`, and `K8S_SSH_KNOWN_HOSTS` as environment secrets.
+- [ ] Enable SSH password authentication on the VM and set the account password.
+- [ ] Verify the SSH host key before saving it; do not generate trusted host keys dynamically in the workflow.
+- [ ] Confirm the VM user can run `git` and `kubectl` with the dev cluster context.
+- [ ] Allow SSH from the GitHub-hosted runner in the Azure network security rules, or use a runner with fixed egress.
+- [ ] Push to `main`; after CI and image push succeed, the workflow deploys the run-number image and waits for rollout.
+
 ### Step 1: Prepare Tomcat
 ```bash
 # Stop Tomcat (if running)
