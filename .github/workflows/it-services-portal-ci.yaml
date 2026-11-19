@@ -81,11 +81,51 @@ jobs:
         run: mvn checkstyle:checkstyle
 
       - name: Upload Checkstyle Report
+        id: checkstyle-report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: checkstyle-report
-          path: target/checkstyle-result.xml
+          name: checkstyle-html-report
+          path: target/site/checkstyle.html
+
+      - name: Add Checkstyle Summary
+        if: always()
+        env:
+          REPORT_URL: ${{ steps.checkstyle-report.outputs.artifact-url }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          summary = ["## Checkstyle results", ""]
+          report = Path("target/checkstyle-result.xml")
+          if report.is_file():
+              counts = {severity: 0 for severity in ("error", "warning", "info", "ignore")}
+              root = ET.parse(report).getroot()
+              for issue in root.iter("error"):
+                  severity = issue.get("severity")
+                  if severity in counts:
+                      counts[severity] += 1
+              total = sum(counts.values())
+              summary.extend([
+                  "| Total | Errors | Warnings | Info | Ignored |",
+                  "| ---: | ---: | ---: | ---: | ---: |",
+                  f"| {total} | {counts['error']} | {counts['warning']} | {counts['info']} | {counts['ignore']} |",
+                  "",
+              ])
+          else:
+              summary.extend(["Checkstyle XML results were not generated.", ""])
+
+          report_url = os.environ.get("REPORT_URL", "")
+          if report_url:
+              summary.append(f"[Download the Checkstyle HTML report artifact]({report_url})")
+          else:
+              summary.append("The Checkstyle HTML report artifact is unavailable.")
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as output:
+              output.write("\n".join(summary) + "\n")
+          PY
 
   unit-test:
 
