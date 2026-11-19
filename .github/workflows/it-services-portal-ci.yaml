@@ -1,6 +1,9 @@
 name: IT Services Portal CI
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 env:
