@@ -84,21 +84,20 @@ jobs:
         run: mvn checkstyle:checkstyle
 
       - name: Upload Checkstyle Report
-        id: checkstyle-report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: checkstyle-html-report
-          path: target/site/checkstyle.html
+          path: |
+            target/site/checkstyle.html
+            target/site/css/
 
       - name: Add Checkstyle Summary
         if: always()
-        env:
-          REPORT_URL: ${{ steps.checkstyle-report.outputs.artifact-url }}
         run: |
           python3 - <<'PY'
-          import os
           import xml.etree.ElementTree as ET
+          import os
           from pathlib import Path
 
           summary = ["## Checkstyle results", ""]
@@ -120,11 +119,7 @@ jobs:
           else:
               summary.extend(["Checkstyle XML results were not generated.", ""])
 
-          report_url = os.environ.get("REPORT_URL", "")
-          if report_url:
-              summary.append(f"[Download the Checkstyle HTML report artifact]({report_url})")
-          else:
-              summary.append("The Checkstyle HTML report artifact is unavailable.")
+          summary.append("See the **Published reports** section below for a direct HTML link after deployment.")
 
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as output:
               output.write("\n".join(summary) + "\n")
@@ -254,7 +249,7 @@ jobs:
                       value = f"{percent:.1f}%"
                       bar = f"`{'#' * filled}{'.' * (20 - filled)}`"
                   summary.append(f"| {label} | {value} | {bar} |")
-              summary.extend(["", "The downloadable `jacoco-coverage-report` artifact includes the full HTML report."])
+              summary.extend(["", "The `jacoco-coverage-report` artifact contains a ZIP of the full HTML report."])
           else:
               summary.append("JaCoCo XML report was not generated.")
 
@@ -270,6 +265,88 @@ jobs:
           path: |
             target/site/jacoco/
             target/site/jacoco/jacoco.xml
+
+  publish-reports:
+
+    name: Publish Reports to GitHub Pages
+    runs-on: ubuntu-latest
+    needs:
+      - checkstyle
+      - coverage
+    if: needs.checkstyle.result == 'success' && needs.coverage.result == 'success'
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+
+      - name: Download Checkstyle HTML Report
+        uses: actions/download-artifact@v4
+        with:
+          name: checkstyle-html-report
+          path: report-site/checkstyle
+
+      - name: Download JaCoCo HTML Report
+        uses: actions/download-artifact@v4
+        with:
+          name: jacoco-coverage-report
+          path: report-site/jacoco
+
+      - name: Create Reports Landing Page
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          Path("report-site/index.html").write_text(
+              """<!doctype html>
+          <html lang="en">
+          <head><meta charset="utf-8"><title>IT Services Portal Reports</title></head>
+          <body>
+            <h1>IT Services Portal Reports</h1>
+            <ul>
+              <li><a href="./checkstyle/checkstyle.html">Checkstyle report</a></li>
+              <li><a href="./jacoco/index.html">JaCoCo coverage report</a></li>
+            </ul>
+          </body>
+          </html>
+          """,
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: report-site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Add Published Report Links to Summary
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          python3 - <<'PY'
+          import os
+
+          page_url = os.environ["PAGE_URL"].rstrip("/")
+          summary = [
+              "## Published reports",
+              "",
+              f"- [Checkstyle HTML report]({page_url}/checkstyle/checkstyle.html)",
+              f"- [JaCoCo coverage report]({page_url}/jacoco/)",
+          ]
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as output:
+              output.write("\n".join(summary) + "\n")
+          PY
 
   package:
 
